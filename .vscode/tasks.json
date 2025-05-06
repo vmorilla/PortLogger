@@ -10,11 +10,12 @@
                 "/p:Configuration=Release"
             ],
             "group": {
-                "kind": "none",
-                "isDefault": true
+                "kind": "build",
+                "isDefault": false
             },
             "problemMatcher": "$msCompile",
-            "detail": "Build the project using MSBuild"
+            "detail": "Build the project using MSBuild",
+
         },
         {
             "label": "Copy DLL",
@@ -26,18 +27,15 @@
                 "z:\\bin\\CSpect3_0_2_1\\",
                 "/Y" // Overwrite without prompting
             ],
-            "problemMatcher": []
-        },
-        {
-            "label": "Build and Copy",
-            "dependsOn": [
-                "Build with MSBuild",
-                "Copy DLL"
-            ],
             "group": {
                 "kind": "build",
                 "isDefault": true
-            }
+            },
+            "problemMatcher": [],
+            "dependsOn": [
+                "Build with MSBuild"
+            ]
         }
+
     ]
 }
