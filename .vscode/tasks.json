@@ -1,0 +1,43 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build with MSBuild",
+            "type": "shell",
+            "command": "msbuild",
+            "args": [
+                "PortLogger.sln",
+                "/p:Configuration=Release"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": "$msCompile",
+            "detail": "Build the project using MSBuild"
+        },
+        {
+            "label": "Copy DLL",
+            "type": "shell",
+            "command": "xcopy",
+            "args": [
+                // Replace these paths with your actual build output and destination paths
+                "${workspaceFolder}\\bin\\Release\\PortLogger.dll",
+                "z:\\bin\\CSpect3_0_2_1\\",
+                "/Y" // Overwrite without prompting
+            ],
+            "problemMatcher": []
+        },
+        {
+            "label": "Build and Copy",
+            "dependsOn": [
+                "Build with MSBuild",
+                "Copy DLL"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            }
+        }
+    ]
+}

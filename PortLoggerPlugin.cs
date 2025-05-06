@@ -1,14 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 using Plugin;
 
+// x
 
 namespace PortLogger
 {
     public class PortLoggerPlugin : iPlugin
     {
-        private const int TARGET_PORT = 0x8080;
+        private int debugPort = 0x8080;
+        private bool startWatching = false;
+        private List<int> watchAddresses = new List<int>();
+        private iCSpect cspect;
 
         private enum ReceiveState
         {
@@ -28,8 +33,23 @@ namespace PortLogger
 
         public List<sIO> Init(iCSpect c)
         {
-            Console.WriteLine($"PortLogger plugin started on port 0x{TARGET_PORT:X4}");
-            return new List<sIO> { new sIO(TARGET_PORT, eAccess.Port_Write) };
+            cspect = c;
+            var sIOs = new List<sIO> { new sIO(debugPort, eAccess.Port_Write) };
+            LoadConfig();
+            Log($"Plugin started on port 0x{debugPort:X4}");
+            foreach (var address in watchAddresses)
+            {
+                sIOs.Add(new sIO(address, eAccess.Memory_Write));
+                Log($"Watching address 0x{address:X4}");
+            }
+
+            sIOs.Add(new sIO(0xFF3E, eAccess.Memory_Read));
+
+            // Add key press 
+            sIOs.Add(new sIO("<ctrl>g", eAccess.KeyPress, 0));
+            sIOs.Add(new sIO("<ctrl>h", eAccess.KeyPress, 1));
+
+            return sIOs;
         }
 
 
@@ -39,9 +59,59 @@ namespace PortLogger
 
         public bool Write(eAccess type, int port, int id, byte value)
         {
-            if (port != TARGET_PORT || type != eAccess.Port_Write)
-                return false;
+            if (port == debugPort && type == eAccess.Port_Write)
+            {
+                WriteLogPort(value);
+                return true;
+            }
+            else if (watchAddresses.Contains(port) && type == eAccess.Memory_Write && startWatching)
+            {
+                Log($"Memory write attempt to {port}... Halting");
+                cspect.Debugger(eDebugCommand.Enter);
+                return true;
+            }
+            //Log($"Other write attempts {port}");
+            return false;
+        }
 
+
+        public byte Read(eAccess type, int port, int _id, out bool isvalid)
+        {
+            if (type == eAccess.Memory_Read)
+            {
+                var pc = cspect.GetRegs().PC;
+                if (pc >= 0x2F7C && pc <= 0x2FD5)
+                {
+                    var byte0 = cspect.Peek(0xFF3E);
+                    var byte1 = cspect.Peek(0xFF3F);
+                    // B6FF or B6EB
+                    if (byte1 == 0xB6 && (byte0 == 0xFF || byte0 == 0xEB))
+                    {
+                        Log("Good...");
+                    }
+                    else
+                    {
+                        Log($"Unexpected value in 0xFF3E: {byte1 * 256 + byte0:X}");
+                        cspect.Debugger(eDebugCommand.Enter);
+                    }
+
+                }
+            }
+            isvalid = false;
+            return 0;
+        }
+
+
+        public bool KeyPressed(int _id)
+        {
+            var enabled = _id == 1 ? "enabled" : "disabled";
+            Log($"MemWatch {enabled}.");
+            startWatching = _id == 1;
+            return true;
+        }
+
+        private void WriteLogPort(byte value)
+        {
             switch (currentState)
             {
                 case ReceiveState.ReceivingString:
@@ -85,19 +155,80 @@ namespace PortLogger
                     }
                     break;
             }
-
-            return false;
         }
 
-        public byte Read(eAccess _type, int _port, int _id, out bool _isvalid)
+        private void LoadConfig()
         {
-            _isvalid = false;
-            return 0;
+            string configPath = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PortLogger.cfg");
+
+            if (!System.IO.File.Exists(configPath))
+            {
+                Log("No config file found, using defaults.");
+                return;
+            }
+
+            foreach (var line in System.IO.File.ReadLines(configPath))
+            {
+                if (line.StartsWith("DebugPort="))
+                {
+                    int port = ParseIntWithHexSupport(line.Substring("DebugPort=".Length));
+                    if (port >= 0)
+                    {
+                        debugPort = port;
+                        Log($"Loaded config: DebugPort=0x{debugPort:X}");
+                    }
+
+                }
+                else if (line.StartsWith("WatchAddress="))
+                {
+                    var numberStrs = line.Substring("WatchAddress=".Length).Split(',');
+
+                    // Parse the numbers based on their format
+                    int address = ParseIntWithHexSupport(numberStrs[0]);
+                    int length = numberStrs.Length > 1 ? ParseIntWithHexSupport(numberStrs[1]) : 1;
+
+                    Log($"Loaded config: WatchAddress={address:X},{length}");
+
+                    for (int i = 0; i < length; i++)
+                    {
+                        watchAddresses.Add(address + i);
+                    }
+                }
+            }
         }
 
-        public bool KeyPressed(int _id)
+
+        private static int ParseIntWithHexSupport(string input)
         {
-            return false;
+            if (string.IsNullOrWhiteSpace(input))
+                return -1;
+
+            // Trim whitespace
+            input = input.Trim();
+
+            if (string.IsNullOrWhiteSpace(input))
+                return -1;
+
+            // Handle $-prefixed hex (assembler style)
+            if (input.StartsWith("$"))
+            {
+                return int.Parse(input.Substring(1), NumberStyles.HexNumber);
+            }
+
+            // Handle 0x-prefixed hex (C-style)
+            if (input.StartsWith("0x", StringComparison.OrdinalIgnoreCase))
+            {
+                return int.Parse(input.Substring(2), NumberStyles.HexNumber);
+            }
+
+            int number;
+            // Try to parse as decimal
+            if (int.TryParse(input, out number))
+            {
+                return number;
+            }
+            
+            return -1;
         }
 
 
@@ -140,7 +271,7 @@ namespace PortLogger
             }
             else
             {
-                Console.WriteLine("Unsupported parameter size: " + expectedParamSize);
+                Log("Unsupported parameter size: " + expectedParamSize);
                 param = 0;
             }
 
@@ -165,11 +296,11 @@ namespace PortLogger
             {
                 string formatStr = Encoding.ASCII.GetString(stringBuffer.ToArray());
                 string formattedMessage = FormatMessage(formatStr, parameters);
-                Console.WriteLine("[DebugOut] " + formattedMessage);
+                Log("[DebugOut] " + formattedMessage);
             }
             catch (Exception ex)
             {
-                Console.WriteLine("[DebugOut ERROR] " + ex.Message);
+                Log("[DebugOut ERROR] " + ex.Message);
             }
 
             stringBuffer.Clear();
@@ -205,6 +336,11 @@ namespace PortLogger
                 }
             }
             return result.ToString();
+        }
+
+        private void Log(string message)
+        {
+            Log("[PortLogger] " + message);
         }
 
         public void Tick() { }
