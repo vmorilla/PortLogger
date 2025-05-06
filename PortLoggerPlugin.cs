@@ -82,8 +82,8 @@ namespace PortLogger
                 var pc = cspect.GetRegs().PC;
                 if (pc >= 0x2F7C && pc <= 0x2FD5)
                 {
-                    var byte0 = cspect.Peek(0xFF3E);
-                    var byte1 = cspect.Peek(0xFF3F);
+                    var byte0 = cspect.Peek(0); //0xFF3E);
+                    var byte1 = cspect.Peek(1); //0xFF3F);
                     // B6FF or B6EB
                     if (byte1 == 0xB6 && (byte0 == 0xFF || byte0 == 0xEB))
                     {
@@ -296,11 +296,11 @@ namespace PortLogger
             {
                 string formatStr = Encoding.ASCII.GetString(stringBuffer.ToArray());
                 string formattedMessage = FormatMessage(formatStr, parameters);
-                Log("[DebugOut] " + formattedMessage);
+                Log(formattedMessage);
             }
             catch (Exception ex)
             {
-                Log("[DebugOut ERROR] " + ex.Message);
+                Log("ERROR: " + ex.Message);
             }
 
             stringBuffer.Clear();
@@ -340,7 +340,7 @@ namespace PortLogger
 
         private void Log(string message)
         {
-            Log("[PortLogger] " + message);
+            Console.WriteLine("[PortLogger] " + message);
         }
 
         public void Tick() { }
