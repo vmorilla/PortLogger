@@ -1,10 +1,13 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq.Expressions;
+using System.Runtime.ConstrainedExecution;
 using System.Text;
 using Plugin;
 
 // x
+
 
 namespace PortLogger
 {
@@ -30,6 +33,8 @@ namespace PortLogger
         private int expectedParamSize = 0;
         private List<byte> paramBuffer = new List<byte>();
 
+        static int stackPointer = 0xFF3E;
+
 
         public List<sIO> Init(iCSpect c)
         {
@@ -43,7 +48,9 @@ namespace PortLogger
                 Log($"Watching address 0x{address:X4}");
             }
 
-            sIOs.Add(new sIO(0xFF3E, eAccess.Memory_Read));
+
+            sIOs.Add(new sIO(stackPointer, eAccess.Memory_Read));
+            sIOs.Add(new sIO(stackPointer, eAccess.Memory_Write));
 
             // Add key press 
             sIOs.Add(new sIO("<ctrl>g", eAccess.KeyPress, 0));
@@ -66,10 +73,16 @@ namespace PortLogger
             }
             else if (watchAddresses.Contains(port) && type == eAccess.Memory_Write && startWatching)
             {
-                Log($"Memory write attempt to {port}... Halting");
+                Log($"Memory write attempt to 0x{port:x}... Halting");
                 cspect.Debugger(eDebugCommand.Enter);
                 return true;
             }
+            else if (port == stackPointer && type == eAccess.Memory_Write)
+            {
+                Log($"Stack pointer 0x{stackPointer:x} writen ");                
+                return true;
+            }
+
             //Log($"Other write attempts {port}");
             return false;
         }
@@ -80,10 +93,11 @@ namespace PortLogger
             if (type == eAccess.Memory_Read)
             {
                 var pc = cspect.GetRegs().PC;
-                if (pc >= 0x2F7C && pc <= 0x2FD5)
+                if (pc >= 0x2FC6 && pc <= 0x2FD5)
                 {
-                    var byte0 = cspect.Peek(0); //0xFF3E);
-                    var byte1 = cspect.Peek(1); //0xFF3F);
+                    // var byte0 = cspect.PeekPhysical(0x3F40); //0xFF3E);
+                    var byte0 = cspect.Peek(0xFF3E); //0xFF3E);
+                    var byte1 = cspect.PeekPhysical(0x3F41); //0xFF3F);
                     // B6FF or B6EB
                     if (byte1 == 0xB6 && (byte0 == 0xFF || byte0 == 0xEB))
                     {
@@ -109,6 +123,7 @@ namespace PortLogger
             startWatching = _id == 1;
             return true;
         }
+
 
         private void WriteLogPort(byte value)
         {
