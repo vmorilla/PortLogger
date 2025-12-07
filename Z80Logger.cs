@@ -176,14 +176,26 @@ public class Z80Logger
 
     private static float DecodeMath32(byte[] bytes)
     {
-        int mantissa = (bytes[0] << 16) | (bytes[1] << 8) | bytes[2];
-        int exponent = bytes[3] - 0x80;
+        uint bits = BitConverter.ToUInt32(bytes, 0);
+        // Handle zero case
+        if (bits == 0)
+            return 0.0f;
+        // Extract sign, exponent, and mantissa
+        int sign = (bits & 0x80000000) != 0 ? -1 : 1;
+        int exponent = (int)((bits >> 23) & 0xff) - 0x7f;
+        double mantissa = 1;
+        for (int i = 22; i >= 0; i--)
+        {
+            uint bitMask = 1u << i;
+            if ((bits & bitMask) != 0)
+            {
+                int power = -(23 - i); // Negative power
+                mantissa += Math.Pow(2, power);
+            }
+        }
 
-        if (mantissa == 0 && exponent == -0x80)
-            return 0;
-
-        float result = mantissa * (float)Math.Pow(2, exponent - 23);
-        return result;
+        double result = sign * mantissa * Math.Pow(2, exponent);
+        return (float)result;
     }
 
     private static string FormatHex(ushort value, char specifier, string modifiers)
