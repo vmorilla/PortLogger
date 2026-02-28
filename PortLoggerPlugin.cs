@@ -14,6 +14,7 @@ namespace PortLogger
         private iCSpect cspect;
 
         private Z80Logger z80Logger;
+        private DateTime? _firstLogTime = null;
 
         public List<sIO> Init(iCSpect c)
         {
@@ -119,7 +120,18 @@ namespace PortLogger
 
         private void Log(string message)
         {
-            Console.WriteLine("[PortLogger] " + message);
+            DateTime now = DateTime.Now;
+            if (_firstLogTime == null)
+                _firstLogTime = now;
+
+            TimeSpan delta = now - _firstLogTime.Value;
+            string timestamp = string.Format("{0:D2}:{1:D2}:{2:D2}.{3:D3}",
+                (int)delta.TotalHours,
+                delta.Minutes,
+                delta.Seconds,
+                delta.Milliseconds);
+
+            Console.WriteLine($"[PortLogger] [{timestamp}] " + message);
         }
 
         public void Tick() { }
